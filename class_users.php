@@ -299,12 +299,109 @@ class sagUser {
         $res = $this->db_conn->query($query);
         return $res;
     }
+    
+    
+    public function updateBestLevel($user_id, $best_level) {
+        $user_id = sanitize($user_id, INT);
+        $best_level = sanitize($best_level, INT);
+        $query = "UPDATE users SET best_level = '" . $best_level . "' WHERE id = " . $user_id;
+        $res = $this->db_conn->update($query);
+        return $res;
     }
-    ?>
+    
+    public function searchPlayer($name, $surname, $level, $session_user) {
+        $name = $this->db_conn->escapestr($name);
+        $surname = $this->db_conn->escapestr($surname);
+        $level = $this->db_conn->escapestr($level);
+        $session_user = sanitize($session_user, INT);
+        $condition = array();
+
+        $sort_by = "users.surname, users.name ASC";
+        if (trim($name) != "") {
+            array_push($condition, " users.name LIKE '%" . trim($name) . "%' ");
+            $sort_by = "users.name ASC";
+        }
+
+        if (trim($surname) != "") {
+            array_push($condition, " users.surname LIKE '%" . trim($surname) . "%' ");
+            $sort_by = "users.surname ASC";
+        }
+
+        if (trim($level) != "") {
+            array_push($condition, " (users.last_level) <= '" . trim($level) . "' ");
+            $sort_by = "last_level DESC";
+        }
+
+        if (count($condition) > 0) {
+            $query = "SELECT users.id as id, users.nationality, users.name, users.surname, users.user_image_path, users.can_challenge, users.last_level, users.level_group, (SELECT COUNT(*) FROM matches JOIN challenges ON challenges.id = id_ref AND type_ref = 'challenge' WHERE YEAR(date_match) = '" . date("Y") . "' AND ((player_1 = users.id AND player_2 = '" . $session_user . "' ) OR (player_1 = '" . $session_user . "' AND player_2 = users.id)) AND status_challenge > 0 ) as count_challenge FROM users WHERE users.user_status = 1 AND ( " . implode(" AND ", $condition) . " ) AND users.id <> '" . $session_user . "' ORDER BY " . $sort_by;
+            $res = $this->db_conn->query($query);
+            return $res;
+        } else {
+            return array();
+        }
+    }
+
+   public function getLevelProgress($user_id) {
+        $cha = new sagChallenge();
+        $user_id = sanitize($user_id, INT);
+        $query = "SELECT * FROM (SELECT * FROM users_vrg WHERE id_user = '" . $user_id . "' ORDER BY date_updated DESC LIMIT 20) as t ORDER BY t.date_updated, id";
+        $list_vrg = array();
+        $res = $this->db_conn->query($query);
+        foreach ($res as $s) {
+            $query = "SELECT * FROM users_vrg WHERE id_user <> " . $user_id . " AND id_type_of = '" . $s['id_type_of'] . "' AND type_of = '" . $s['type_of'] . "'";
+            $res_1 = $this->db_conn->query($query);
+            $detail = $this->getDetail($res_1[0]['id_user']);
+            $record_vrg['my_vrg'] = $s['vrg'];
+            $record_vrg['fighter_vrg'] = $res_1[0]['vrg'];
+            $record_vrg['fighter_info'] = $res_1[0]['id_user'];
+            $record_vrg['fighter_info_label'] = strtoupper($detail['name'] . "<br/>" . $detail['surname']) . "<br/>" . date("d/m/Y", strtotime($s['date_updated']));
+            $record_vrg['date_updated'] = $s['date_updated'];
+            array_push($list_vrg, $record_vrg);            
+        }
+        return $list_vrg;
+    }
+
+    public function getSUMPointChallenge($user_id, $month, $year) {
+        $user_id = sanitize($user_id, INT);
+        $month = $this->db_conn->escapestr($month);
+        $year = $this->db_conn->escapestr($year);
+        $query = "SELECT SUM(points) as points FROM users_point WHERE id_user = '" . $user_id . "' AND  YEAR(date_inserted) = '" . $year . "' AND MONTH(date_inserted) = '" . $month . "' AND type_of = 'challenge' ";
+        $res = $this->db_conn->query($query);
+        return $res[0]['points'];
+    }
+    
+    public function getAllMatchesByStatus($user_id, $end_status) {
+        $user_id = sanitize($user_id, INT);
+        $end_status = sanitize($end_status, PARANOID);
+        if ($end_status == "vittorie") {
+            $cond = "(player_1 = " . $user_id . ") AND end_status IN ('V1','R2','N2') OR (player_2 = " . $user_id . ") AND end_status IN ('V2','R1','N1')";
+        } elseif ($end_status == "pareggiate") {
+            $cond = "(player_1 = " . $user_id . " OR player_2 = " . $user_id . ") AND end_status IN ('P0')";
+        } elseif ($end_status == "sconfitte") {
+            $cond = "(player_1 = " . $user_id . ") AND end_status IN ('V2','R1','N1') OR (player_2 = " . $user_id . ") AND end_status IN ('V1','R2','N2')";
+        } elseif ($end_status == "tutte") {
+            $cond = "(player_1 = " . $user_id . " OR player_2 = " . $user_id . ") AND end_status IN ('V1','V2','R1','R2','N2','N1','P0')";
+        }
+        $query = "SELECT * FROM matches WHERE " . $cond . " ORDER BY date_match DESC, time_match DESC";
+        $res = $this->db_conn->query($query);
+        return $res;
+    }
+       
+    public function getLastMatches($user_id, $limit = 10) {
+        $user_id = sanitize($user_id, INT);
+        $query = 'SELECT * FROM matches WHERE (player_1 = ' . $user_id . ' OR player_2 = ' . $user_id . ' OR player_1_double = ' . $user_id . ' OR player_2_double = ' . $user_id . ') AND end_status IN (\'V1\',\'V2\',\'R1\',\'R2\',\'N2\',\'N1\',\'P0\') ORDER BY date_match DESC, time_match DESC LIMIT ' . $limit;
+        $res = $this->db_conn->query($query);
+        return $res;
+    }
     
     
-    
-    
+    public function getAllLastMatches($limit = 20) {
+        $query = "SELECT * FROM matches WHERE end_status IN ('V1','V2') AND date_match <= '" . date("Y-m-d") . "' ORDER BY date_match DESC, time_match DESC LIMIT " . $limit;
+        $res = $this->db_conn->query($query);
+        return $res;
+    }
+}
+?>
     
     
     
