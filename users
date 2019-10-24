@@ -1,5 +1,5 @@
 
-
+<?
 require_once 'class_db.php'; //classe per la connessione al db
 require_once 'sanitize.php'; //classe per il controllo delle variabili d'ingresso
 require_once 'class_challenge.php'; //classe per la gestione delle sfide
@@ -299,6 +299,8 @@ class sagUser {
         $res = $this->db_conn->query($query);
         return $res;
     }
+    }
+    ?>
     
     
     
